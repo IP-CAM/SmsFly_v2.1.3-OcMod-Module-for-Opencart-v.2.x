@@ -1,0 +1,13 @@
+/.idea/
+/html/
+!/html/system/storage/modification/admin/controller/common/column_left.php
+!/html/system/storage/modification/admin/controller/common/header.php
+!/html/system/storage/modification/admin/view/template/common/header.tpl
+!/html/system/storage/modification/catalog/model/checkout/order.php
+!/html/admin/controller/setting/sfconfig.php
+!/html/admin/language/en-gb/setting/smsflylang.php
+!/html/admin/language/english/setting/smsflylang.php
+!/html/admin/language/ru-ru/setting/smsflylang.php
+!/html/admin/language/russian/setting/smsflylang.php
+!/html/admin/view/template/setting/sfconfig.tpl
+!/html/system/library/smsflyc.php
