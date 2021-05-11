@@ -13,7 +13,7 @@ class ControllerSettingSfconfig extends Controller {
     }
 
     public function index() {
-        $this->load->language('extension/module/smsfly');
+        $this->load->language('setting/sfconfig');
         $this->load->language('setting/setting');
         $this->load->model('localisation/order_status');
 
@@ -23,7 +23,7 @@ class ControllerSettingSfconfig extends Controller {
 
             $this->session->data['success'] = $this->language->get('text_success');
 
-            $this->response->redirect($this->url->link('extension/module/smsfly', 'user_token=' . $this->session->data['user_token'], true));
+            $this->response->redirect($this->url->link('setting/sfconfig', 'token=' . $this->session->data['token'], true));
         }
 
         $this->document->setTitle($this->language->get('sfentry_nastroyki'));
@@ -33,8 +33,8 @@ class ControllerSettingSfconfig extends Controller {
         array_map(function ($status) { $this->temp_arr_statuses['SID_'.$status['order_status_id']] = $status['name'];}, $order_statuses);
 
         $data_options = [
-            'action'            => $this->url->link('extension/module/smsfly', 'user_token=' . $this->session->data['user_token'], true),
-            'cancel'            => $this->url->link('common/dashboard', 'user_token=' . $this->session->data['user_token'], true),
+            'action'            => $this->url->link('setting/sfconfig', 'token=' . $this->session->data['token'], true),
+            'cancel'            => $this->url->link('common/dashboard', 'token=' . $this->session->data['token'], true),
             'header'            => $this->load->controller('common/header'),
             'column_left'       => $this->load->controller('common/column_left'),
             'footer'            => $this->load->controller('common/footer'),
@@ -42,8 +42,8 @@ class ControllerSettingSfconfig extends Controller {
             'order_statuses'    => $this->temp_arr_statuses, //список статусов
             'names'             => $this->fly->names,
             'breadcrumbs'       => [
-                ['text' => $this->language->get('text_home'), 'href' => $this->url->link('common/dashboard', 'user_token=' . $this->session->data['user_token'], true)],
-                ['text' => $this->language->get('sftext_setting'), 'href' => $this->url->link('extension/module/smsfly', 'user_token=' . $this->session->data['user_token'], true)],
+                ['text' => $this->language->get('text_home'), 'href' => $this->url->link('common/dashboard', 'token=' . $this->session->data['token'], true)],
+                ['text' => $this->language->get('sftext_setting'), 'href' => $this->url->link('setting/sfconfig', 'token=' . $this->session->data['token'], true)],
             ],
             'success'           => isset($this->session->data['success']) ? $this->session->data['success'] : '',
             'flyauth'           => $this->fly->auth

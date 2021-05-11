@@ -64,7 +64,7 @@
 										<select id="input-sfconfig-from" class="form-control" name="sfconfig_from">
 											<option value="InfoCentr"><?php echo $sftext_ne_vibrano ?></option>
 											<?php foreach ($names as $name) { ?>
-											<option value="<?php echo $name ?>" <?php if ($name == 'sfconfig_from') { ?> selected <?php } ?>><?php echo $name ?></option>
+											<option value="<?php echo $name ?>" <?php if ($name == $sfconfig_from) { ?> selected <?php } ?>><?php echo $name ?></option>
 											<?php } ?>
 										</select>
 									</div>
