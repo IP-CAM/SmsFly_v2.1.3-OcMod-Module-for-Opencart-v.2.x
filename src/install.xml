@@ -28,93 +28,63 @@
         <operation>
             <search><![CDATA[if ($order_info) {]]></search>
             <add position="before"><![CDATA[
-		//SMS_Fly
-            if ($this->config->get('sfconfig_alert_client') || $this->config->get('sfconfig_alert_manager')) {
-                $sfsuccess = (int)$this->config->get('sfconfig_counter_ok');
-                $sferror = (int)$this->config->get('sfconfig_counter_err');
+        //SMS_Fly
+        if ($this->config->get('sfconfig_alert_client') || $this->config->get('sfconfig_alert_manager')) {
+            require_once (DIR_SYSTEM . 'library/smsflyc.php');
 
-                $sflogin = $this->config->get('sfconfig_gate_username');
-                $sfpass = $this->config->get('sfconfig_gate_password');
-                $sfai = $this->config->get('sfconfig_from');
-                require_once (DIR_SYSTEM . 'library/smsflyc.php');
+            $smsfly = new SMSflyC($this->config->get('sfconfig_gate_username'),$this->config->get('sfconfig_gate_password'),$this->config->get('sfconfig_from'));
 
-                $smsfly = new SmsFlyC($sflogin,$sfpass,$sfai);
+            $order_status_query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_status WHERE order_status_id = '$order_status_id' AND language_id = '{$order_info['language_id']}'");
+            $order_status = ($order_status_query->num_rows) ? $order_status_query->row['name'] : '';
 
-                $order_status_query = $this->db->query("SELECT * FROM " . DB_PREFIX . "order_status WHERE order_status_id = '" . (int)$order_status_id . "' AND language_id = '" . (int)$order_info['language_id'] . "'");
+            $scount = $this->config->get('sfconfig_counter_ok');
+            $ecount = $this->config->get('sfconfig_counter_err');
 
-                if ($order_status_query->num_rows) {
-                    $order_status = $order_status_query->row['name'];
-                } else {
-                    $order_status = '';
+            if ($this->config->get('sfconfig_alert_client')) {
+                if ( in_array('SID_'.$order_status_id, $this->config->get('sfconfig_status_check_client')) ) {
+                    $sftemplates = $this->config->get('sfconfig_templates_client');
+                    $sftemplate = $sftemplates['SID_'.$order_status_id];
+
+                    $sfsmstext = str_replace(array('{ID}', '{DATE}', '{TIME}', '{SUM}', '{PHONE}', '{NAME}', '{SONAME}', '{STATUS}', '{COMMENT}'),
+                        array($order_id, date('d.m.Y'), date('H:i'), number_format($order_info['total'], 2, ',', ' '), $order_info['telephone'], $order_info['firstname'], $order_info['lastname'], $order_status, $comment),
+                        $sftemplate);
+                    if ( $this->config->get('sfconfig_translit') == 1 ) $sfsmstext = SMSflyC::translit($sfsmstext);
+                    $response = $smsfly->send($order_info['telephone'], $sfsmstext);
+
+                    if ( isset($response['success']) && $response['success'] ) {
+                        $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $scount++ . "' WHERE `key` = 'sfconfig_counter_ok'");
+                    } else {
+                        $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $ecount++ . "' WHERE `key` = 'sfconfig_counter_err'");
+                    }
                 }
             }
 
             if ($this->config->get('sfconfig_alert_manager')) {
-                if ( in_array($order_status_id, $this->config->get('sfconfig_status_check_manager')) ) {
+                if ( in_array('SID_'.$order_status_id, $this->config->get('sfconfig_status_check_manager')) ) {
                     $sftemplates = $this->config->get('sfconfig_templates_manager');
-                    $sftemplate = $sftemplates[$order_status_id];
+                    $sftemplate = $sftemplates['SID_'.$order_status_id];
+
+                    $sfsmstext = str_replace(array('{ID}', '{DATE}', '{TIME}', '{SUM}', '{PHONE}', '{NAME}', '{SONAME}', '{STATUS}', '{COMMENT}' ),
+                        array($order_id, date('d.m.Y'), date('H:i'), number_format($order_info['total'], 2, ',', ' '), $order_info['telephone'], $order_info['firstname'], $order_info['lastname'] , $order_status, $comment),
+                        $sftemplate);
+                    if ( $this->config->get('sfconfig_translit') == 1 ) $sfsmstext = SMSflyC::translit($sfsmstext);
 
                     $sfphonesmng = explode(',',$this->config->get('sfconfig_to_manager'));
                     foreach ($sfphonesmng as $sfphonemng) {
-                        $sfsmstext = str_replace(array('{ID}', '{DATE}', '{TIME}', '{SUM}', '{PHONE}', '{NAME}', '{SONAME}', '{STATUS}', '{COMMENT}' ),
-                                        array($order_id, date('d.m.Y'), date('H:i'), floatval($order_info['total']), $order_info['telephone'], $order_info['firstname'], $order_info['lastname'] , $order_status, $comment),
-                                        $sftemplate);
-                        if ($this->config->get('sfconfig_translit') == 1) {
-                            $sfsmstext = SmsFlyC::sfTranslit($sfsmstext);
-                        }
+                        $response = $smsfly->send($sfphonemng, $sfsmstext);
 
-                        $sfoptions = array(
-                            'SMSFLY_PHONE' => $sfphonemng,
-                            'SMSFLY_TEXT' => $sfsmstext
-                        );
-                        $textreturn = $smsfly->sfSendSms($sfoptions);
-
-                        if ($textreturn == "Сообщение отправлено.") {
-                            $sfsuccess++;
-                            $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $sfsuccess . "' WHERE `key` = 'sfconfig_counter_ok'");
-                            if ($this->config->get('sfconfig_copy_to_comment') == 1) {
-                                $comment = 'SMS-Fly: '.$sfsmstext;
-                            }
+                        if ( isset($response['success']) && $response['success'] ) {
+                            $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $scount++ . "' WHERE `key` = 'sfconfig_counter_ok'");
                         } else {
-                            $sferror++;
-                            $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $sferror . "' WHERE `key` = 'sfconfig_counter_err'");
+                            $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $ecount++ . "' WHERE `key` = 'sfconfig_counter_err'");
                         }
                     }
                 }
             }
 
-            if ($this->config->get('sfconfig_alert_client')) {
-                if ( in_array($order_status_id, $this->config->get('sfconfig_status_check_client')) ) {
-                    $sftemplates = $this->config->get('sfconfig_templates_client');
-                    $sftemplate = $sftemplates[$order_status_id];
-
-                    $sfsmstext = str_replace(array('{ID}', '{DATE}', '{TIME}', '{SUM}', '{PHONE}', '{NAME}', '{SONAME}', '{STATUS}', '{COMMENT}'),
-                                    array($order_id, date('d.m.Y'), date('H:i'), floatval($order_info['total']), $order_info['telephone'], $order_info['firstname'], $order_info['lastname'], $order_status, $comment),
-                                    $sftemplate);
-                    if ($this->config->get('sfconfig_translit') == 1) {
-                        $sfsmstext = SmsFlyC::sfTranslit($sfsmstext);
-                    }
-
-                    $sfoptions = array(
-                        'SMSFLY_PHONE' => $order_info['telephone'],
-                        'SMSFLY_TEXT' => $sfsmstext
-                    );
-                    $textreturn = $smsfly->sfSendSms($sfoptions);
-
-                    if ($textreturn == "Сообщение отправлено.") {
-                        $sfsuccess++;
-                        $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $sfsuccess . "' WHERE `key` = 'sfconfig_counter_ok'");
-                        if ($this->config->get('sfconfig_copy_to_comment') == 1) {
-                            $comment = 'SMS-Fly: '.$sfsmstext;
-                        }
-                    } else {
-                        $sferror++;
-                        $this->db->query("UPDATE " . DB_PREFIX . "setting SET `value` = '" . $sferror . "' WHERE `key` = 'sfconfig_counter_err'");
-                    }
-                }
-            }
-            //
-			]]>
+            if ( isset($sfsmstext) && !empty($sfsmstext) && ($this->config->get('sfconfig_copy_to_comment') == 1) ) $comment = 'SMS-fly: '.$sfsmstext;
+        }
+        //			]]>
             </add>
         </operation>
     </file>	
@@ -123,32 +93,29 @@
         <operation>
             <search><![CDATA[public function index() {]]></search>
             <add position="after"><![CDATA[
-		//SMS_Fly
-		if (isset($this->session->data['token'])) {
-			$data['sfurl_smsfly'] = 'index.php?route=setting/sfconfig&token=' . $this->session->data['token'];
-			$data['sfurl_balance'] = 'index.php?route=setting/sfconfig/asfGetBalance&token=' . $this->session->data['token'];
-			$data['sfurl_sendsms'] = 'index.php?route=setting/sfconfig/asfSMSSend&token=' . $this->session->data['token'];
-			$data['sfurl_success'] = 'index.php?route=setting/sfconfig/sfCountSucces&token=' . $this->session->data['token'];
-			$data['sfurl_error'] = 'index.php?route=setting/sfconfig/sfCountError&token=' . $this->session->data['token'];
-		}
-		$this->load->language('setting/smsflylang');
-		$data['sfentry_otpravitsms'] = $this->language->get('sfentry_otpravitsms');
-		$data['sfentry_nomerpoluchat'] = $this->language->get('sfentry_nomerpoluchat');
-		$data['sfentry_tekstsoobshenia'] = $this->language->get('sfentry_tekstsoobshenia');
-		$data['sfentry_soobshenie'] = $this->language->get('sfentry_soobshenie');
-		$data['sfentry_statistika'] = $this->language->get('sfentry_statistika');
-		$data['sfentry_oshibok'] = $this->language->get('sfentry_oshibok');
-		$data['sfentry_otpravit'] = $this->language->get('sfentry_otpravit');
-		$data['sfentry_otpravleno'] = $this->language->get('sfentry_otpravleno');
-		$data['sfentry_nastroyki'] = $this->language->get('sfentry_nastroyki');
-		$data['sfentry_oshibka'] = $this->language->get('sfentry_oshibka');
-		$data['sfentry_balance'] = $this->language->get('sfentry_balance');
-		$data['sfentry_nagmite'] = $this->language->get('sfentry_nagmite');
+        //SMS_Fly
+        if ( isset($this->session->data['token']) ) {
+            $data['user_token'] = $this->session->data['token'];
+            $data['sfurl_smsfly'] = $this->url->link('setting/sfconfig', 'token=' . $this->session->data['token'], true);
 
-		$data['sfconfig_balance'] = (float)$this->config->get('sfconfig_balance');
-		$data['sfconfig_counter_ok'] = (int)$this->config->get('sfconfig_counter_ok');
-		$data['sfconfig_counter_err'] = (int)$this->config->get('sfconfig_counter_err');
-		//
+            $this->load->language('setting/smsflylang');
+            $data['sfentry_otpravitsms'] = $this->language->get('sfentry_otpravitsms');
+            $data['sfentry_nomerpoluchat'] = $this->language->get('sfentry_nomerpoluchat');
+            $data['sfentry_tekstsoobshenia'] = $this->language->get('sfentry_tekstsoobshenia');
+            $data['sfentry_soobshenie'] = $this->language->get('sfentry_soobshenie');
+            $data['sfentry_statistika'] = $this->language->get('sfentry_statistika');
+            $data['sfentry_oshibok'] = $this->language->get('sfentry_oshibok');
+            $data['sfentry_otpravit'] = $this->language->get('sfentry_otpravit');
+            $data['sfentry_otpravleno'] = $this->language->get('sfentry_otpravleno');
+            $data['sfentry_nastroyki'] = $this->language->get('sfentry_nastroyki');
+            $data['sfentry_oshibka'] = $this->language->get('sfentry_oshibka');
+            $data['sfentry_balance'] = $this->language->get('sfentry_balance');
+
+            $data['sfconfig_balance'] = $this->config->get('sfconfig_balance');
+            $data['sfconfig_counter_ok'] = $this->config->get('sfconfig_counter_ok');
+            $data['sfconfig_counter_err'] = $this->config->get('sfconfig_counter_err');
+        }
+        //
 			]]>
             </add>
         </operation>
@@ -159,79 +126,134 @@
             <search><![CDATA[<ul class="nav pull-right">]]></search>
             <add position="after"><![CDATA[
   <!--SMS-Fly-->
-    <li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown"></span> <i class="fa fa-rocket fa-lg"></i></a>
-      <ul class="dropdown-menu dropdown-menu-right alerts-dropdown">
-        <li class="dropdown-header">SMS-Fly</li>
-        <li><a style="cursor: pointer" onclick="sfGetBalance()" title="<?php echo $sfentry_nagmite ?>"><span id="sfbalance" class="label label-success pull-right"><?php echo $sfconfig_balance; ?></span><?php echo $sfentry_balance; ?></a></li>
-        <li class="divider"></li>
-        <li class="dropdown-header"><?php echo $sfentry_otpravitsms ?>
+  <li class="dropdown" style="width: 50px" id="smsflyrocket"><a class="dropdown-toggle text-center" data-toggle="dropdown"> <i class="fa fa-rocket fa-lg"></i></a>
+    <ul class="dropdown-menu dropdown-menu-right alerts-dropdown">
+      <li class="dropdown-header" style="width: 250px">SMS-Fly</li>
+      <li class="dropdown-header"><?php echo $sfentry_balance ?><span class=" pull-right"><span id="sfbalance" class="label label-success"><?php echo $sfconfig_balance ?></span>&nbsp;<i id="smsfly-getBalance" style="cursor: pointer" class="fa fa-refresh"></i></span></li>
+      <li class="divider"></li>
+      <li class="dropdown-header"><?php echo $sfentry_otpravitsms?>
         <div class="form-group-sm">
-            <input id="sfphone" class="form-control" type="text" placeholder="380XXYYYYYYY" style="margin-bottom: 3px; margin-top: 3px;" title="<?php echo $sfentry_nomerpoluchat ?>">
-            <textarea id="sftext" class="form-control" placeholder="<?php echo $sfentry_soobshenie ?>" style="margin-bottom: 3px" title="<?php echo $sfentry_tekstsoobshenia ?>"></textarea>
-            <input id="sfbutton" class="form-control btn-info" type="button" value="<?php echo $sfentry_otpravit ?>" onclick="sfSendSMS()">
-            <label id="sfstatus" hidden></label>
+          <input id="sfphone" class="form-control" type="text" placeholder="380XXYYYYYYY" style="margin-bottom: 3px; margin-top: 3px;" title="<?php echo $sfentry_nomerpoluchat?>">
+          <textarea id="sftext" rows="4" class="form-control" placeholder="<?php echo $sfentry_soobshenie?>" style="margin-bottom: 3px" title="<?php echo $sfentry_tekstsoobshenia?>"></textarea>
+          <input id="smsfly-sendSMS" class="form-control btn-info" type="button" value="<?php echo $sfentry_otpravit?>">
+          <label id="smsfly-status" hidden></label>
         </div>
-        </li>
-        <li class="divider"></li>
-        <li class="dropdown-header"><?php echo $sfentry_statistika  ?></li>
-        <li><a style="display: block; overflow: auto;"><span id="sfsuccess" class="label label-success pull-right"><?php echo $sfconfig_counter_ok; ?></span><?php echo $sfentry_otpravleno  ?></a></li>
-        <li><a><span id="sferror" class="label label-danger pull-right"><?php echo $sfconfig_counter_err; ?></span><?php echo $sfentry_oshibok  ?></a></li>
-        <li class="divider"></li>
-        <li><a href="<?php echo $sfurl_smsfly; ?>"><?php echo $sfentry_nastroyki;  ?></a></li>
-      </ul>
-    </li>
-    <script>
-        function sfSendSMS() {
-            var postdata = new Object();
-            postdata.sfphone = $('#sfphone').val();
-            postdata.sftext = $('#sftext').val();
+      </li>
+      <li class="divider"></li>
+      <li class="dropdown-header"><?php echo $sfentry_statistika?></li>
+      <li><a style="display: block; overflow: auto;"><span id="sfsuccess" class="label label-success pull-right"><?php echo $sfconfig_counter_ok ?></span><?php echo $sfentry_otpravleno?></a></li>
+      <li><a><span id="sferror" class="label label-danger pull-right"><?php echo $sfconfig_counter_err ?></span><?php echo $sfentry_oshibok?></a></li>
+      <li class="divider"></li>
+      <li><a href="<?php echo $sfurl_smsfly ?>"><?php echo $sfentry_nastroyki ?></a></li>
+    </ul>
+  </li>
+  <script>
+    let balanceButton = $('#smsfly-getBalance'), sendButton = $('#smsfly-sendSMS'), statusLabel = $('#smsfly-status')
 
-            $('#sfbutton').prop('disabled',true);
+    //Обновление баланса
+    balanceButton.click(async function (e) {
+      balanceButton.fadeOut()
+      e.stopPropagation()
+      let response = await fetch('index.php?route=setting/sfconfig/getBalance&token=<?php echo $user_token ?>')
 
-            $.ajax({
-                url: '<?php echo $sfurl_sendsms ?>',
-                type: 'post',
-                dataType: 'json',
-                data: postdata,
-                beforeSend: function () {
-                    $('#sfstatus').show();
-                },
-                success: function(json) {
-                    var urlcounter = '<?php echo $sfurl_success ?>';
+      $('#sfbalance').text(await response.text())
+      balanceButton.fadeIn()
+    })
 
-                    $('#sfstatus').text(json.apiresponse);
+    //Отправка смс
+    sendButton.click(async function (e) {
 
-                    if (String(json.apiresponse) == "Сообщение отправлено.") {
-                        $('#sfsuccess').text(parseInt($('#sfsuccess').text())+1);
-                    } else {
-                        urlcounter = '<?php echo $sfurl_error ?>';
-                        $('#sferror').text(parseInt($('#sferror').text())+1);
-                    }
-                    $.ajax(urlcounter);
-                },
-                error: function (err,text) {
-                    $('#sfstatus').text('Ошибка');
-                    urlcounter = '<?php echo $sfurl_error ?>';
-                    $.ajax(urlcounter);
-                    console.log(text);
-                }
-            });
-            setTimeout(sfGetBalance,500);
+      let precheck = null, post = {
+        to_phone : $('#sfphone').val(),
+        text : $('#sftext').val()
+      }
+
+      if ( post.to_phone.length < 10 ) {
+        precheck = 'Номер телефона не менее 10 цифр'
+      }
+
+      if ( post.text.length === 0 ) {
+        precheck = 'Текст не может быть пустым'
+      }
+
+      if ( precheck !== null ) {
+        showStatus(precheck)
+        return
+      }
+
+      sendButton.prop('disabled', true)
+
+      let response = await fetch('index.php?route=setting/sfconfig/sendSMS&token=<?php echo $user_token ?>', {
+        method: 'POST',
+        body: JSON.stringify(post),
+        headers: {
+          'Content-Type': 'application/json'
         }
+      })
+      let data = await response.json()
 
-        function sfGetBalance() {
-            $.ajax({
-                url: '<?php echo $sfurl_balance ?>',
-                success: function(response) {
-                    $('#sfbalance').text(response + " грн.");
-                }
-            });
-            $('#sfbutton').prop('disabled',false);
-        }
-    </script>
-  <!---->	
-			]]>
+      let counter = $('#sfsuccess')
+      if ( data.hasOwnProperty('success') && data.success ) {
+        showStatus('Сообщение отправлено')
+        balanceButton.trigger('click')
+        sendButton.prop('disabled', false)
+      } else {
+        if ( data.hasOwnProperty('error_message') ) showStatus(data.error_message, 'block')
+        else showStatus('Ошибка', 'block')
+        counter = $('#sferror')
+      }
+      counter.text(Number(counter.text()) + 1)
+    })
+
+    function showStatus(text, block) {
+      statusLabel.text(text)
+      statusLabel.fadeIn()
+      setTimeout(() => {
+        if (block !== 'block') statusLabel.fadeOut()
+      }, 3000)
+    }
+  </script>
+  <!---->			]]>
             </add>
         </operation>
-    </file>	
+    </file>
+
+    <file path="admin/view/template/sale/order_info.tpl">
+        <operation>
+            <search><![CDATA[<label class="col-sm-2 control-label" for="input-comment"><?php echo $entry_comment; ?></label>]]></search>
+            <add position="before" offset="1"><![CDATA[
+                <!--SMS-fly-->
+                <div class="form-group">
+                  <label class="col-sm-2 control-label" for="smsfly-input-notify"><span data-toggle="tooltip" title="Отправить пользователю смс с комментарием ниже">Отправить СМС</span></label>
+                  <div class="col-sm-10">
+                    <div class="checkbox">
+                      <input type="checkbox" name="smsfly-notify" value="1" id="smsfly-input-notify"/>
+                    </div>
+                  </div>
+                </div>
+                <!---->
+            ]]>
+            </add>
+        </operation>
+        <operation>
+            <search><![CDATA[$('#button-history').on('click', function() {]]></search>
+            <add position="after"><![CDATA[
+      //SMS-fly
+      if ( $('#smsfly-input-notify').prop('checked') ) {
+        fetch('index.php?route=setting/sfconfig/sendSMS&token={{ user_token }}', {
+          method: 'POST',
+          body: JSON.stringify({
+            to_phone: "{{ telephone }}",
+            text: $('textarea[name=\'comment\']').val()
+          }),
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        })
+      }
+      //
+            ]]>
+            </add>
+        </operation>
+    </file>
 </modification>

@@ -1,32 +1,141 @@
 <?php
-class SmsFlyC {
-    private $baseurl = 'http://sms-fly.com/api/api.php';
-    private $login;
-    private $password;
-    private $source;
-	private $appversion = 'opencart 2.2.3';
+class SMSflyC {
+    private $baseurl = 'https://sms-fly.ua/api/api.php';
+    private $login, $password, $source, $balanceuah, $lastactionstatus = true;
+    private $sourceList = [];
+    private $appversion = 'opencart 2.1.3';
 
-    public function __construct($login, $password, $source="InfoCentr")
-    {
+    public function __construct($login, $password, $source) {
         $this->login = $login;
         $this->password = $password;
-        if ($source == "") {
-	        $this->source = "InfoCentr";
+        $this->source = $source;
+    }
+
+    public function __get($name) {
+        switch ($name) {
+            case 'auth': return $this->lastactionstatus;
+            case 'names':
+                if ( count($this->sourceList) === 0 ) {
+                    $query = <<<XML
+<?xml version="1.0" encoding="utf-8"?><request><operation>MANAGEALFANAME</operation><command id="GETALFANAMESLIST"/></request>
+XML;
+                    $this->apiquery($query);
+                }
+
+                return $this->sourceList;
+            case 'balance':
+                if ( empty($this->balanceuah) ) {
+                    $query = <<<XML
+<?xml version="1.0" encoding="utf-8"?>
+<request>
+    <operation>GETBALANCE</operation>
+</request>
+XML;
+
+                    $this->apiquery($query);
+                }
+                return $this->balanceuah;
+            default: return null;
+        }
+    }
+
+    private function apiquery ($query) {
+        $auth = $this->login.':'.$this->password;
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_USERPWD , $auth);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_URL, $this->baseurl);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-Type: text/xml", "Accept: text/xml"));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $query);
+        $result = ($this->lastactionstatus) ? curl_exec($ch) : null;
+        curl_close($ch);
+
+        if ( !empty($result) ) {
+            return $this->parser($result, $query);
+        }
+        return false;
+    }
+
+    private function parser ($obj, $query) {
+        $data = ['success' => false, 'response' => $obj, 'error_message' => null, 'query' => $query];
+
+        if ( $obj === 'EMPTY REQUEST' || empty($obj) ) {
+            $data['error_message'] = 'Нет авторизации!';
+            $this->lastactionstatus = false;
+        } elseif (strpos($obj, 'Access denied') !== false) {
+            $data['error_message'] = 'Не правильный логин или пароль!';
+            $this->lastactionstatus = false;
         } else {
-	        $this->source = htmlspecialchars($source);
+            try {
+                $xml = simplexml_load_string($obj);
+
+                if (!$xml) throw new Exception('Ошибка XML');
+
+                preg_match('/GETALFANAMESLIST|SENDSMS|GETBALANCE/', $query, $matches);
+                switch ($matches[0]) {
+                    case 'GETALFANAMESLIST':
+                        $data['success'] = true;
+                        foreach ($xml->state as $name) if ( (string)$name['status'] === 'ACTIVE' ) array_push($this->sourceList, (string)$name['alfaname']);
+                        break;
+                    case 'SENDSMS':
+                        switch ((string)$xml->state['code']) {
+                            case 'INSUFFICIENTFUNDS':
+                                $this->lastactionstatus = false;
+                                $data['error_message'] = "Недостаточно средств";
+                                break;
+                            case 'ERRPHONES':
+                                $data['error_message'] = "Неправильный номер получателя";
+                                break;
+                            case 'ACCEPT':
+                                $data['success'] = true;
+                                break;
+                            case 'ERRTEXT':
+                                $data['error_message'] = "Текст сообщения не может быть пустым";
+                                break;
+                            case 'ERRALFANAME':
+                                $this->lastactionstatus = false;
+                                $data['error_message'] = "Неправильное альфаимя";
+                                break;
+                            default:
+                                $this->lastactionstatus = false;
+                                $data['error_message'] = "Неизвестная ошибка";
+                        }
+                        break;
+                    case 'GETBALANCE':
+                        $data['success'] = true;
+                        $this->balanceuah = (string)$xml->balance;
+                        break;
+                }
+            } catch (Exception $e) {
+                $this->lastactionstatus = false;
+                $data['error_message'] = $e->getMessage();
+            }
         }
 
+        return $data;
     }
 
-    public function sfDebug($var,$exit = true) {
-        echo "<pre>";
-        var_dump($var);
-        if ($exit) {
-            exit();
-        }
+    public function send($phone, $text) {
+        $recipient      = preg_replace("/[^0-9+]/",'', $phone);
+        $text           = htmlspecialchars($text);
+
+        $query = <<<XML
+<?xml version="1.0" encoding="utf-8"?>
+<request>
+    <operation>SENDSMS</operation>
+    <message start_time="AUTO" end_time="AUTO" lifetime="12" rate="1" desc="" source="$this->source" version="$this->appversion">
+        <body>$text</body>
+        <recipient>$recipient</recipient>
+    </message>
+</request>
+XML;
+
+        return $this->apiquery($query);
     }
 
-    static function sfTranslit($text) {
+    static function translit($text) {
         $text_arr = $arChar = preg_split('/(?<!^)(?!$)/u', $text);
         $abc =  Array(
             'а' => 'a',
@@ -112,95 +221,15 @@ class SmsFlyC {
         return $lat;
     }
 
-    public function sfSendSms($settings, $debugmode = false)
-    {
-        $source         = $this->source;
-        $recipient      = preg_replace("/[^0-9+]/",'', $settings['SMSFLY_PHONE']);
-        $text           = htmlspecialchars($settings['SMSFLY_TEXT']);
-        $start_time     = 'AUTO';
-        $end_time       = 'AUTO';
-        $rate           = 1;
-        $lifetime       = 4;
-        $description    = '';
-        $version        = $this->appversion;
-        $textQuery 	 = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-        $textQuery 	.= "<request>";
-        $textQuery 	.= "<operation>SENDSMS</operation>";
-        $textQuery 	.= '		<message start_time="'.$start_time.'" end_time="'.$end_time.'" lifetime="'.$lifetime.'" rate="'.$rate.'" desc="'.$description.'" source="'.$source.'" version="'.$version.'">'."\n";
-        $textQuery 	.= "		<body>".$text."</body>";
-        $textQuery 	.= "		<recipient>".$recipient."</recipient>";
-        $textQuery 	.=  "</message>";
-        $textQuery 	.= "</request>";
-
-		$obj = $this->sfQuery($textQuery);
-
-		if ($debugmode) {
-			$this->sfDebug($obj);
-		}
-
-	    $text = $this->sfParser($obj,'code');
-		return $text;
-    }
-
-    public function sfBalance()
-    {
-        $textQuery 	 = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
-        $textQuery 	.= "<request>";
-        $textQuery 	.= "<operation>GETBALANCE</operation>";
-        $textQuery 	.= "</request>";
-
-        $obj = $this->sfQuery($textQuery);
-	    return $this->sfParser($obj,'balance');
-    }
-
-    private function sfQuery ($textQuery)
-    {
-        $auth = $this->login.':'.$this->password;
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_USERPWD , $auth);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
-        curl_setopt($ch, CURLOPT_POST, 1);
-        curl_setopt($ch, CURLOPT_URL, $this->baseurl);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, array("Content-Type: text/xml", "Accept: text/xml"));
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $textQuery);
-        $result = curl_exec($ch);
-        curl_close($ch);
-
-		if (isset($result)) {
-			return $result;
-		}
-		return false;
-    }
-
-    private function sfParser ($obj, $child, $attribut=null)
-    {
-        $text = '';
-        if ($obj == 'EMPTY REQUEST' || $obj == false) {
-            $text = 'Нет авторизации!';
-        } elseif (strpos($obj, 'Access denied') !== false) {
-	        $text = 'Не правильный логин или пароль!';
-        } else {
-	        $xml = new SimpleXMLElement($obj);
-
-	        if ($child == 'balance') {
-		        //$text = "У Вас на счету ".(string)$xml->balance. " грн. ";
-		        $text = (string)$xml->balance;
-	        } elseif ($child == 'code') {
-		        $code = (string)$xml->state['code'];
-		        switch ($code) {
-			        case 'ERRPHONES': $text = "Неправильный номер получателя!"; break;
-			        case 'ACCEPT': $text = "Сообщение отправлено."; break;
-			        case 'ERRTEXT': $text = "Текст сообщения не может быть пустым."; break;
-			        case 'ERRALFANAME': $text = "Неправильное альфаимя."; break;
-		        }
-	        }
+    static function print_a($val, $name = '---', $var_dump = false, $return = false) {
+        if ($return) {
+            return "<hr><h3>$name</h3><pre>".(($var_dump) ? var_dump($val):print_r ($val, true))."</pre>";
         }
-
-        if ((string)$text !== '') {
-            return (string)$text;
+        $call_from = debug_backtrace();
+        if(is_bool($val))
+        {
+            $val = ($val) ? 'true' : 'false';
         }
-        $this->sfDebug($obj);
-        return false;
+        print "<div style=\"text-align: left;\"><pre>--- [".basename($call_from[0]['file'])."][".$call_from[0]['line']."] --- <b>".str_pad($name.' ', 80, "-")."</b>\r\n"; (($var_dump) ? var_dump($val):print_r ($val)); print "</pre></div>";
     }
 }
