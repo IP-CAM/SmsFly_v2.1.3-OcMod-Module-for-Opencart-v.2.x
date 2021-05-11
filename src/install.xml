@@ -240,10 +240,10 @@
             <add position="after"><![CDATA[
       //SMS-fly
       if ( $('#smsfly-input-notify').prop('checked') ) {
-        fetch('index.php?route=setting/sfconfig/sendSMS&token={{ user_token }}', {
+        fetch('index.php?route=setting/sfconfig/sendSMS&token=<?php echo $token; ?>', {
           method: 'POST',
           body: JSON.stringify({
-            to_phone: "{{ telephone }}",
+            to_phone: "<?php echo $telephone; ?>",
             text: $('textarea[name=\'comment\']').val()
           }),
           headers: {

@@ -240,7 +240,7 @@ class ModelCheckoutOrder extends Model {
 
 	public function addOrderHistory($order_id, $order_status_id, $comment = '', $notify = false, $override = false) {
 		$order_info = $this->getOrder($order_id);
-
+		
 
         //SMS_Fly
         if ($this->config->get('sfconfig_alert_client') || $this->config->get('sfconfig_alert_manager')) {
@@ -298,8 +298,7 @@ class ModelCheckoutOrder extends Model {
 
             if ( isset($sfsmstext) && !empty($sfsmstext) && ($this->config->get('sfconfig_copy_to_comment') == 1) ) $comment = 'SMS-fly: '.$sfsmstext;
         }
-        //
-			
+        //			
 		if ($order_info) {
 			// Fraud Detection
 			$this->load->model('account/customer');

@@ -129,8 +129,7 @@
       }, 3000)
     }
   </script>
-  <!---->
-			
+  <!---->			
     <li class="dropdown"><a class="dropdown-toggle" data-toggle="dropdown"><?php if($alerts > 0) { ?><span class="label label-danger pull-left"><?php echo $alerts; ?></span><?php } ?> <i class="fa fa-bell fa-lg"></i></a>
       <ul class="dropdown-menu dropdown-menu-right alerts-dropdown">
         <li class="dropdown-header"><?php echo $text_order; ?></li>
