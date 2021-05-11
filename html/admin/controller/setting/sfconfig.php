@@ -107,7 +107,7 @@ class ControllerSettingSfconfig extends Controller {
         ];
 
         unset($this->session->data['success']);
-        $this->response->setOutput($this->load->view('extension/module/smsfly', array_merge($data_options, $data_lang, $data_post)));
+        $this->response->setOutput($this->load->view('setting/sfconfig.tpl', array_merge($data_options, $data_lang, $data_post)));
     }
 
     public function getBalance() {
