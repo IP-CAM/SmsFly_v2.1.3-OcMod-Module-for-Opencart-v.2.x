@@ -3,7 +3,7 @@ class SMSflyC {
     private $baseurl = 'https://sms-fly.ua/api/api.php';
     private $login, $password, $source, $balanceuah, $lastactionstatus = true;
     private $sourceList = [];
-    private $appversion = 'opencart 2.1.2';
+    private $appversion = 'opencart 2.1.3';
 
     public function __construct($login, $password, $source) {
         $this->login = $login;
