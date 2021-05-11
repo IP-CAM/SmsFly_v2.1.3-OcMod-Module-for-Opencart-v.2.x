@@ -13,7 +13,7 @@ class ControllerSettingSfconfig extends Controller {
     }
 
     public function index() {
-        $this->load->language('setting/sfconfig');
+        $this->load->language('setting/smsflylang');
         $this->load->language('setting/setting');
         $this->load->model('localisation/order_status');
 
@@ -26,7 +26,7 @@ class ControllerSettingSfconfig extends Controller {
             $this->response->redirect($this->url->link('setting/sfconfig', 'token=' . $this->session->data['token'], true));
         }
 
-        $this->document->setTitle($this->language->get('sfentry_nastroyki'));
+        $this->document->setTitle($this->language->get('sftext_setting'));
 
         $order_statuses = $this->model_localisation_order_status->getOrderStatuses();
 

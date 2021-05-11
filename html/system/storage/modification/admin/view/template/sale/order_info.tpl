@@ -255,9 +255,7 @@
                 <div class="form-group">
                   <label class="col-sm-2 control-label" for="smsfly-input-notify"><span data-toggle="tooltip" title="Отправить пользователю смс с комментарием ниже">Отправить СМС</span></label>
                   <div class="col-sm-10">
-                    <div class="checkbox">
                       <input type="checkbox" name="smsfly-notify" value="1" id="smsfly-input-notify"/>
-                    </div>
                   </div>
                 </div>
                 <!---->
